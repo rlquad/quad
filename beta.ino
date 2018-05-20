@@ -19,10 +19,7 @@ float gyro_cal[3];
 uint32_t loop_timer;
 bool flag=0;
 float out[3];
-float dcm[][3] = { 1, 0, 0,
-                   0, 1, 0,
-                   0, 0, 1 };
-double dtheta[3] = { 0, 0, 0};              //roll,pitch,yaw
+
 
 ////////////////IMU PATRS ENDS
 
@@ -35,7 +32,7 @@ double dtheta[3] = { 0, 0, 0};              //roll,pitch,yaw
 
 ////####GLOBAL VARIABLES##########\\\\\\\\\\\\
 
-int roll_receiver,pitch_receiver;
+long roll_receiver,pitch_receiver;
 byte last_channel_1, last_channel_2, last_channel_3, last_channel_4,last_channel_5,last_channel_6;
 unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4,timer_channel_5,timer_channel_6, esc_timer, esc_loop_timer,loop_timer_pid;
 
@@ -47,13 +44,13 @@ int esc_1, esc_2, esc_3, esc_4;      ///outputs to motors
 ////####COEFFICIENTS#########\\\\\\\
 
 
-double roll_kp=0;
-double roll_kd=175;
+double roll_kp=4;
+double roll_kd=200;
 double pitch_kp=roll_kp;
 double pitch_kd=roll_kd;
 double Kp_shi=0;
 double Kd_shi=0;
-double pwm2f;//*/
+double pwm2f;
 double roll_last_error = 0  , roll_error;
 double pitch_last_error = 0 ,pitch_error;
 
@@ -112,8 +109,12 @@ for(int i=0;i<3;i++)
 gyro_cal[i]/=2000;
   
 }
-roll = atan2(acc[1],acc[2]);
-pitch = atan2(-acc[0],acc[2]);                           //Starting Angle
+//roll = atan2(acc[1],acc[2]);
+//pitch = atan2(-acc[0],acc[2]);                           //Starting Angle
+
+out[0] = atan2(acc[1],acc[2])*degconvert;
+out[1] = atan2(-acc[0],acc[2])*degconvert;
+
 
 float dcm[][3] = {cos(pitch) , sin(roll)*sin(pitch), cos(roll)*sin(pitch),
                   0          , cos(roll)           , -sin(roll)          ,
@@ -167,16 +168,17 @@ loop_timer = micros();
 
 angle_calc();
 
-//roll_kp = 0.05*rec6 - 50;//*/
-//roll_kp=0;
-//pitch_kp = roll_kp;
+roll_kp = 0.05*rec6 - 50;
+
+pitch_kp = roll_kp;
 
 
-// prt_ang();
 
 
-//roll_des  = (roll_receiver - 1500) * 0.04;     ///converting to degree and tilt range -20 to +20 roll
-//pitch_des = (pitch_receiver- 1500) * 0.04;    ///converting  to degree and tilt range -20 to +20 pitch
+
+roll_des  = (roll_receiver - 1500) * 0.04;     ///converting to degree and tilt range -20 to +20 roll
+pitch_des = (pitch_receiver- 1500) * 0.04;    ///converting  to degree and tilt range -20 to +20 pitch
+Serial.print(roll_receiver);Serial.print(",");Serial.print(pitch_receiver);Serial.println();
 ////////#####
 
 
@@ -189,50 +191,15 @@ pitch_dot=gyro[1];
 roll_error  =  roll_des-_roll;
 pitch_error =  pitch_des-_pitch;
 
+
+
 u2[0] =  roll_kp  *  (roll_error)   + roll_kd  * (roll_error-roll_last_error);                     //.error in phi calculated
 u2[1] = -pitch_kp *  (pitch_error)  - pitch_kd * (pitch_error-pitch_last_error);        //.error in theta calculated
 
 roll_last_error=roll_error;
 pitch_last_error=pitch_error;
 
-/*
-/*
-Serial.print(phi);
-Serial.print(" *** ");
-Serial.println(theta);
-      
-                                                                //YAW is not in self correction  YAW correction is removed 
 
-roll_error_1=roll_des - _roll;
-
-roll_pd_1          =        roll_kp_1*(roll_error_1)    + roll_kd_1*(roll_error_1-roll_last_error_1);
-roll_last_error_1  =        roll_error_1;
-
-roll_error_2       =        roll_pd_1-roll_dot;
-
-roll_pd_2          =        roll_kp_2*roll_last_error_2 + roll_kd_2*(roll_error_2-roll_last_error_2);
-roll_last_error_2  =        roll_error_2;
-
-
-
-pitch_error_1=pitch_des + _pitch;  ///the _pitch is added as ,the direction of pitch is opposite
-
-pitch_pd_1          =        pitch_kp_1*(pitch_error_1)    + pitch_kd_1*(pitch_error_1-pitch_last_error_1);
-pitch_last_error_1  =        pitch_error_1;
-
-pitch_error_2       =        pitch_pd_1-pitch_dot;
-
-pitch_pd_2          =        pitch_kp_2*pitch_last_error_2 + pitch_kd_2*(pitch_error_2-pitch_last_error_2);
-pitch_last_error_2  =        pitch_error_2;
-
-*/ 
-
-//Serial.print(- u2[1]  - u2[0]);
-//Serial.print(",");Serial.print(+ u2[1]  + u2[0]);Serial.println();//Serial.print(",");Serial.print(roll_pd_2);Serial.print(",");Serial.print(pitch_pd_2);Serial.println();
-//Serial.print("###");Serial.println();
-//Serial.print(_roll);Serial.print(",");Serial.print(_pitch);Serial.println();
-//Serial.print("###");Serial.println();
-//*/
 if((rec_arm>1500)&&throttle>1010)
 {
   
@@ -241,17 +208,12 @@ if((rec_arm>1500)&&throttle>1010)
   esc_2 = throttle + u2[1]  + u2[0]; //Calculate the pulse for esc 2 (rear-right - CW)
   esc_3 = throttle + u2[1]  - u2[0]; //Calculate the pulse for esc 3 (rear-left - CCW)
   esc_4 = throttle - u2[1]  - u2[0]; //Calculate the pulse for esc 4 (front-left - CW)
-  /*
-  esc_1 = throttle - pitch_pd_2  + roll_pd_2; //Calculate the pulse for esc 1 (front-right - CCW)
-  esc_2 = throttle + pitch_pd_2  + roll_pd_2; //Calculate the pulse for esc 2 (rear-right - CW)
-  esc_3 = throttle + pitch_pd_2  - roll_pd_2; //Calculate the pulse for esc 3 (rear-left - CCW)
-  esc_4 = throttle - pitch_pd_2  - roll_pd_2; //Calculate the pulse for esc 4 (front-left - CW)
-*/
 
-      esc_1 = constrain(esc_1,1000,2000);
-      esc_2 = constrain(esc_2,1000,1000);           ///constrain for checking
-      esc_3 = constrain(esc_3,1000,2000);
-      esc_4 = constrain(esc_4,1000,1000);           ///constrain for checking
+
+      esc_1 = constrain(esc_1,1000,2000);           
+      esc_2 = constrain(esc_2,1000,2000);           
+      esc_3 = constrain(esc_3,1000,2000);           
+      esc_4 = constrain(esc_4,1000,2000);           
 
 }
 
@@ -263,17 +225,7 @@ esc_4 = 1000;
 }
       
 
-/*
-         Serial.print(esc_1);
-    Serial.print(" ");
-    Serial.print(esc_2);
-    Serial.print(" ");
-    Serial.print(esc_3);
-    Serial.print(" ");
-    Serial.print(esc_4);
-    Serial.println();
- */  
-      
+
       while(micros() - loop_timer_pid < 4000);                                      //We wait until 4000us are passed.
   //Serial.println(micros() - loop_timer_pid);
        loop_timer_pid = micros();                                   //Set the timer for the next loop.
@@ -369,6 +321,9 @@ last_throttle=throttle1;
     pitch_receiver = current_time - timer_3;                             //Channel 3 is current_time - timer_3.
 
   }
+
+
+  
   //Channel 4=========================================
   if(PINB & B00001000 ){                                                    //Is input 11 high?
     if(last_channel_4 == 0){                                                //Input 11 changed from 0 to 1.
@@ -406,7 +361,7 @@ void setupmpu() {
  
     Wire.beginTransmission(mpu6050_address);                                      //Start communication with the address found during search
     Wire.write(0x1A);                                                          //We want to write to the CONFIG register (1A hex)
-    Wire.write(0x03);                                                          //Set the register bits as 00000011 (Set Digital Low Pass Filter to ~43Hz)
+    Wire.write(0b00000110);                                                          //Set the register bits as 00000011 (Set Digital Low Pass Filter to ~43Hz)
     Wire.endTransmission();  
    
 
@@ -443,14 +398,7 @@ void record_data(){
     gyro[i]/=gyrolsb;
     acc[i] /=acclsb;
   }
- // Serial.println(acc[0]);
-//Serial.println(acc[1]);
-//float T1=micros();
-//Serial.println(acc[2]);
-//Serial.println(micros()-T1);
-//Serial.println(dt*1000);
 
-  //Serial.println(acc[2]);
   }
  
   else
@@ -472,7 +420,7 @@ void angle_calc()
 
 float norm = acc[0]*acc[0] + acc[1]*acc[1] + acc[2];
 
-if(norm>1.3225||norm<.7225)
+if(norm>1.3225||norm<0.7225)
 {
   accelw=0;
   gyrow=1;
@@ -483,95 +431,16 @@ else
   gyrow=0.996;
 }
 
-  dtheta[0] = gyrow*gyro[0]*dt*inv_degconvt+ accelw*(atan2(acc[1],acc[2])-roll);
-  dtheta[1] = gyrow*gyro[1]*dt*inv_degconvt+ accelw*(atan2(-acc[0],acc[2])-pitch);
-  dtheta[2] = 0;
+out[0] = gyrow*(out[0] + gyro[0]*dt) + accelw*(atan2(acc[1],acc[2]))*degconvert;
 
+out[1] = gyrow*(out[1] + gyro[1]*dt) + accelw*(atan2(-acc[0],acc[2]))*degconvert;
 
-vec_rot();
+Serial.print(out[0]);
+Serial.print(" ");
+Serial.println(out[1]);
 
-
-
-roll  = atan2(dcm[2][1],dcm[2][2]);
-pitch = asin(-dcm[2][0]);
-//yaw   = atan2(dcm[1][0],dcm[0][0]);
-
-out[0] = (roll*degconvert);
-out[1] = (pitch*degconvert);
-
-
-  Serial.println(out[0]);
-}
-
-void vec_rot()
-{
-float temp_dcm[3][3];
-float dot = 0;
-
-float euler[][3] = {   1         , -dtheta[2] , dtheta[1],
-                       dtheta[2], 1         ,  -dtheta[0],
-                       -dtheta[1] , dtheta[0],  1         
-                   };
-
-
-
-for(int i=0;i<3;i++)
-{
-  for(int j=0;j<3;j++)
-  {
-    temp_dcm[i][j] = 0;
-    
-    for(int k=0;k<3;k++)
-    temp_dcm[i][j] += dcm[i][k]*euler[k][j];
-
-   
-  }
-}
-
-for(int i=0;i<3;i++){
-for(int j=0;j<3;j++)
-  {dcm[i][j] = temp_dcm[i][j];
-
-  }  
-}
-/*
-for(int i=0;i<3;i++)
-dot += dcm[0][i]*dcm[1][i];
-
-float dummy[2];
-for(int i=0;i<3;i++)
-{
-dummy[0] = dcm[0][i] - dot*dcm[1][i]/2;
-dummy[1] = dcm[1][i] - dot*dcm[0][i]/2;
-
-dcm[0][i] = dummy[0];
-dcm[1][i] = dummy[1];
-  
-}
-
-dcm[2][0] = dcm[0][1]*dcm[1][2] - dcm[1][1]*dcm[0][2];
-dcm[2][1] = dcm[1][0]*dcm[0][2] - dcm[0][0]*dcm[1][2];
-dcm[2][2] = dcm[0][0]*dcm[1][1] - dcm[1][0]*dcm[0][1];
-*/
 }
 
 
 
-void renorm()
-{
-float rnorm = dcm[0][0]*dcm[0][0] + dcm[0][1]*dcm[0][1] + dcm[0][2]*dcm[0][2];
 
-for(int i=0;i<3;i++)
-dcm[0][i] = .5*(3 - rnorm)*dcm[0][i];
-
-rnorm = dcm[1][0]*dcm[1][0] + dcm[1][1]*dcm[1][1] + dcm[1][2]*dcm[1][2];
-
-for(int i=0;i<3;i++)
-dcm[1][i] = .5*(3 - rnorm)*dcm[1][i];
-
-rnorm = dcm[2][0]*dcm[2][0] + dcm[2][1]*dcm[2][1] + dcm[2][2]*dcm[2][2];
-
-for(int i=0;i<3;i++)
-dcm[2][i] = .5*(3 - rnorm)*dcm[2][i];
- 
-}
