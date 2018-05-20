@@ -30,9 +30,9 @@ float out[3];
 
 //unsigned long current_time,throttle,throttle1,last_throttle,timer_1; byte last_channel_1;
 
-////####GLOBAL VARIABLES##########\\\\\\\\\\\\
+////####GLOBAL VARIABLES##########\\\\\\\\\\\\ 
 
-long roll_receiver,pitch_receiver;
+long int roll_receiver,pitch_receiver;
 byte last_channel_1, last_channel_2, last_channel_3, last_channel_4,last_channel_5,last_channel_6;
 unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4,timer_channel_5,timer_channel_6, esc_timer, esc_loop_timer,loop_timer_pid;
 
@@ -167,10 +167,10 @@ loop_timer = micros();
 
 
 angle_calc();
-
+/*
 roll_kp = 0.05*rec6 - 50;
 
-pitch_kp = roll_kp;
+pitch_kp = roll_kp;*/
 
 
 
@@ -178,7 +178,7 @@ pitch_kp = roll_kp;
 
 roll_des  = (roll_receiver - 1500) * 0.04;     ///converting to degree and tilt range -20 to +20 roll
 pitch_des = (pitch_receiver- 1500) * 0.04;    ///converting  to degree and tilt range -20 to +20 pitch
-Serial.print(roll_receiver);Serial.print(",");Serial.print(pitch_receiver);Serial.println();
+//Serial.print(roll_des);Serial.print(",");Serial.print(pitch_des);Serial.println();
 ////////#####
 
 
@@ -187,7 +187,7 @@ roll_dot=gyro[0];
 _pitch=out[1];
 pitch_dot=gyro[1];
 
-
+//Serial.print(_roll);Serial.print(",");Serial.print(_pitch);Serial.println();
 roll_error  =  roll_des-_roll;
 pitch_error =  pitch_des-_pitch;
 
@@ -434,10 +434,10 @@ else
 out[0] = gyrow*(out[0] + gyro[0]*dt) + accelw*(atan2(acc[1],acc[2]))*degconvert;
 
 out[1] = gyrow*(out[1] + gyro[1]*dt) + accelw*(atan2(-acc[0],acc[2]))*degconvert;
-
+/*
 Serial.print(out[0]);
 Serial.print(" ");
-Serial.println(out[1]);
+Serial.println(out[1]);*/
 
 }
 
