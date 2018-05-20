@@ -6,8 +6,8 @@
 
 #define degconvert 57.2957786 
 float accelw =0.004;
-float gyrow= 0.996;
-#define acc_smt 8
+float gyrow=0.996;
+#define acc_smt 10
 #define inv_degconvt 0.01745329279
 
 
@@ -46,14 +46,16 @@ double u2[4];                 ///error matrix
 int esc_1, esc_2, esc_3, esc_4;      ///outputs to motors
 ////####COEFFICIENTS#########\\\\\\\
 
-/*
-double Kp_roll=20;
-double Kd_roll=5;
-double Kp_pitch=Kp_roll;
-double Kd_pitch=Kd_roll;
+
+double roll_kp=0;
+double roll_kd=175;
+double pitch_kp=roll_kp;
+double pitch_kd=roll_kd;
 double Kp_shi=0;
 double Kd_shi=0;
-double pwm2f;*/
+double pwm2f;//*/
+double roll_last_error = 0  , roll_error;
+double pitch_last_error = 0 ,pitch_error;
 
 ///CASCADE PID CONTROLLER
 
@@ -71,9 +73,9 @@ float yaw_des    =   0;
 
 ///SENSOR DATAS\\\
 
-int _pitch  ;  int pitch_dot;
-int _roll   ;  int roll_dot;
-int _yaw    ;  int yaw_dot;
+double _pitch  ;  int pitch_dot;
+double _roll   ;  int roll_dot;
+double _yaw    ;  int yaw_dot;
 
 
 ////PITCH
@@ -164,15 +166,17 @@ loop_timer = micros();
 
 
 angle_calc();
-/*
-Kp_phi = 0.05*rec6 - 50;
-Kp_theta = Kp_phi;
-*/
+
+//roll_kp = 0.05*rec6 - 50;//*/
+//roll_kp=0;
+//pitch_kp = roll_kp;
+
+
 // prt_ang();
 
 
-roll_des  = (roll_receiver - 1500) * 0.04;     ///converting to degree and tilt range -20 to +20 roll
-pitch_des = (pitch_receiver- 1500) * 0.04;    ///converting  to degree and tilt range -20 to +20 pitch
+//roll_des  = (roll_receiver - 1500) * 0.04;     ///converting to degree and tilt range -20 to +20 roll
+//pitch_des = (pitch_receiver- 1500) * 0.04;    ///converting  to degree and tilt range -20 to +20 pitch
 ////////#####
 
 
@@ -180,16 +184,23 @@ _roll=out[0];
 roll_dot=gyro[0];
 _pitch=out[1];
 pitch_dot=gyro[1];
+
+
+roll_error  =  roll_des-_roll;
+pitch_error =  pitch_des-_pitch;
+
+u2[0] =  roll_kp  *  (roll_error)   + roll_kd  * (roll_error-roll_last_error);                     //.error in phi calculated
+u2[1] = -pitch_kp *  (pitch_error)  - pitch_kd * (pitch_error-pitch_last_error);        //.error in theta calculated
+
+roll_last_error=roll_error;
+pitch_last_error=pitch_error;
+
 /*
-u2[0]=Kp_roll*(roll_des-_roll)+Kd_phi*(-roll_dot);                     //.error in phi calculated
-u2[1]=-Kp_pitch*(pitch_des-_pitch)-Kd_pitch*(-theta_dot);        //.error in theta calculated
-
-
 /*
 Serial.print(phi);
 Serial.print(" *** ");
 Serial.println(theta);
-*/       
+      
                                                                 //YAW is not in self correction  YAW correction is removed 
 
 roll_error_1=roll_des - _roll;
@@ -214,31 +225,33 @@ pitch_error_2       =        pitch_pd_1-pitch_dot;
 pitch_pd_2          =        pitch_kp_2*pitch_last_error_2 + pitch_kd_2*(pitch_error_2-pitch_last_error_2);
 pitch_last_error_2  =        pitch_error_2;
 
-/*
-Serial.print(roll_des);Serial.print(",");Serial.print(pitch_des);Serial.println();//Serial.print(",");Serial.print(roll_pd_2);Serial.print(",");Serial.print(pitch_pd_2);Serial.println();
-Serial.print("###");Serial.println();
-Serial.print(roll_receiver - 1500);Serial.print(",");Serial.print(pitch_receiver - 1500);Serial.println();
-Serial.print("###");Serial.println();
-*/
+*/ 
+
+//Serial.print(- u2[1]  - u2[0]);
+//Serial.print(",");Serial.print(+ u2[1]  + u2[0]);Serial.println();//Serial.print(",");Serial.print(roll_pd_2);Serial.print(",");Serial.print(pitch_pd_2);Serial.println();
+//Serial.print("###");Serial.println();
+//Serial.print(_roll);Serial.print(",");Serial.print(_pitch);Serial.println();
+//Serial.print("###");Serial.println();
+//*/
 if((rec_arm>1500)&&throttle>1010)
 {
   
-  /*
+  
   esc_1 = throttle - u2[1]  + u2[0]; //Calculate the pulse for esc 1 (front-right - CCW)
   esc_2 = throttle + u2[1]  + u2[0]; //Calculate the pulse for esc 2 (rear-right - CW)
   esc_3 = throttle + u2[1]  - u2[0]; //Calculate the pulse for esc 3 (rear-left - CCW)
   esc_4 = throttle - u2[1]  - u2[0]; //Calculate the pulse for esc 4 (front-left - CW)
-  */
+  /*
   esc_1 = throttle - pitch_pd_2  + roll_pd_2; //Calculate the pulse for esc 1 (front-right - CCW)
   esc_2 = throttle + pitch_pd_2  + roll_pd_2; //Calculate the pulse for esc 2 (rear-right - CW)
   esc_3 = throttle + pitch_pd_2  - roll_pd_2; //Calculate the pulse for esc 3 (rear-left - CCW)
   esc_4 = throttle - pitch_pd_2  - roll_pd_2; //Calculate the pulse for esc 4 (front-left - CW)
-
+*/
 
       esc_1 = constrain(esc_1,1000,2000);
-      esc_2 = constrain(esc_2,1000,2000);
+      esc_2 = constrain(esc_2,1000,1000);           ///constrain for checking
       esc_3 = constrain(esc_3,1000,2000);
-      esc_4 = constrain(esc_4,1000,2000);
+      esc_4 = constrain(esc_4,1000,1000);           ///constrain for checking
 
 }
 
@@ -420,7 +433,6 @@ void record_data(){
 
 
 
-
   if(calibration == 2000){
     gyro[0] -= gyro_cal[0];                                       //Only compensate after the calibration.
     gyro[1] -= gyro_cal[1];                                       //Only compensate after the calibration.
@@ -431,7 +443,14 @@ void record_data(){
     gyro[i]/=gyrolsb;
     acc[i] /=acclsb;
   }
-  
+ // Serial.println(acc[0]);
+//Serial.println(acc[1]);
+//float T1=micros();
+//Serial.println(acc[2]);
+//Serial.println(micros()-T1);
+//Serial.println(dt*1000);
+
+  //Serial.println(acc[2]);
   }
  
   else
@@ -477,11 +496,11 @@ roll  = atan2(dcm[2][1],dcm[2][2]);
 pitch = asin(-dcm[2][0]);
 //yaw   = atan2(dcm[1][0],dcm[0][0]);
 
-out[0] = int(roll*degconvert);
-out[1] = int(pitch*degconvert);
+out[0] = (roll*degconvert);
+out[1] = (pitch*degconvert);
 
 
-  
+  Serial.println(out[0]);
 }
 
 void vec_rot()
@@ -556,4 +575,3 @@ for(int i=0;i<3;i++)
 dcm[2][i] = .5*(3 - rnorm)*dcm[2][i];
  
 }
-
