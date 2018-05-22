@@ -11,7 +11,7 @@ MPU6050 mpu;
 
 
 #define INTERRUPT_PIN 2  
-#define LED_PIN 13 
+ 
 bool blinkState = false;
 
 // MPU control/status vars
@@ -33,51 +33,57 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 
 
 double gyrocal[3]={0,0,0};
-
-
-
-
-float pid_p_gain_roll = 0;               //Gain setting for the roll P-controller
-float pid_i_gain_roll = 0.0;              //Gain setting for the roll I-controller
-float pid_d_gain_roll = 0;              //Gain setting for the roll D-controller
-int pid_max_roll = 400;                    //Maximum output of the PID-controller (+/-)    
-
-float pid_p_gain_pitch = pid_p_gain_roll;  //Gain setting for the pitch P-controller.
-float pid_i_gain_pitch = pid_i_gain_roll;  //Gain setting for the pitch I-controller.
-float pid_d_gain_pitch = pid_d_gain_roll;  //Gain setting for the pitch D-controller.
-int pid_max_pitch = pid_max_roll;          //Maximum output of the PID-controller (+/-)
-
-float pid_p_gain_yaw = 0.0;                //Gain setting for the pitch P-controller. //4.0           
-float pid_i_gain_yaw = 0.0;               //Gain setting for the pitch I-controller. //0.02
-float pid_d_gain_yaw = 0.0;                //Gain setting for the pitch D-controller.
-int pid_max_yaw = 400;                     //Maximum output of the PID-controller (+/-)
-
-
-
-byte last_channel_3,last_channel_6,last_channel_5;
-
-volatile int  receiver_input_channel_3,receiver_input_channel_6,receiver_input_channel_5;
-
-int esc_1, esc_2, esc_3, esc_4;
-
 int cal_int, start, gyro_address;
 
-int throttle;
+
+////####GLOBAL VARIABLES##########\\\\\\\\\\\\ 
+
+long int roll_receiver,pitch_receiver,yaw_receiver;
+byte last_channel_1, last_channel_2, last_channel_3, last_channel_4,last_channel_5,last_channel_6;
+unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4,timer_channel_5,timer_channel_6, esc_timer, esc_loop_timer,loop_timer_pid;
+
+unsigned long timer_1, timer_2, timer_3, timer_4,timer_5,timer_6, current_time;
+
+unsigned int throttle,throttle1,last_throttle, rec_arm,rec6;
+double u2[4];                 ///error matrix
+int esc_1, esc_2, esc_3, esc_4;      ///outputs to motors
+
+double roll_kp=4;
+double roll_kd=300;
+double pitch_kp=roll_kp;
+double pitch_kd=roll_kd;
+double roll_last_error = 0  , roll_error;
+double pitch_last_error = 0 ,pitch_error;
+
+double yaw_kp = 12; double yaw_kd =7 ;
+double yaw_last_error = 0 , yaw_error;
+double yaw_pid;
+
+////SET POINTS\\\\
+
+float pitch_des  =   0;  
+float roll_des   =   0;  
+float yaw_des    =   0; 
+
+float tem_roll, tem_pitch,tem_yaw;
+
+///SENSOR DATAS\\\
+
+double _pitch  ;  int pitch_dot;
+double _roll   ;  int roll_dot;
+double _yaw    ;  int yaw_dot;
 
 
 
-
-
+////###################################
+/*
 unsigned long timer_channel_1, timer_channel_2, timer_channel_3, timer_channel_4, esc_timer, esc_loop_timer;
 unsigned long  timer_3, timer_6, current_time,timer_5;
 unsigned long loop_timer;
-
+*/
 double gyro_pitch, gyro_roll, gyro_yaw;
 
-float pid_error_temp=0;
-float pid_i_mem_roll=0, pid_roll_setpoint=0, pid_output_roll, pid_last_roll_d_error=0;
-float pid_i_mem_pitch=0, pid_pitch_setpoint, pid_output_pitch, pid_last_pitch_d_error=0;
-float pid_i_mem_yaw=0, pid_yaw_setpoint=0,  pid_output_yaw, pid_last_yaw_d_error=0;
+
 
 float yaw,roll,pitch;
 
@@ -94,23 +100,7 @@ void dmpDataReady() {
 void setup()
 {Serial.begin(115200);
 
- DDRD |= B11110000;                                                        //Configure digital port 4, 5, 6 and 7 as output.
- DDRB |= B00100000;                                                        //Configure digital port 12 and 13 as output.
-  
-  digitalWrite(13,HIGH);
-  
-  
-  
-
-
-
-for (cal_int = 0; cal_int < 1250 ; cal_int ++){                           //Wait 5 seconds before continuing.
-    PORTD |= B11110000;                                                     //Set digital poort 4, 5, 6 and 7 high.
-    delayMicroseconds(1000);                                                //Wait 1000us.
-    PORTD &= B00001111;                                                     //Set digital poort 4, 5, 6 and 7 low.
-    delayMicroseconds(3000);                                                //Wait 3000us.
-    if(cal_int % 50 == 0)digitalWrite(13, !digitalRead(13));
-}
+ 
 
 setupmpu();
     
@@ -119,28 +109,45 @@ setupmpu();
 
 
 
- PCICR |= (1 << PCIE0);                                                    //Set PCIE0 to enable PCMSK0 scan.
-  PCMSK0 |= (1 << PCINT2);                                                  //Set PCINT2 (digital input 10)to trigger an interrupt on state change.
-PCMSK0 |= (1 << PCINT4);
-PCMSK0 |= (1 << PCINT3); 
-       loop_timer = micros();                                                    //Set the timer for the next loop.
-digitalWrite(13,LOW); 
-                                                  
-start=0;
+///////////CONTROLL PARTS BEGIN
 
+  
+  DDRD |= B11110000;                                                        //Configure digital poort 4, 5, 6 and 7 as output.
+  PCICR |= (1 << PCIE0);                                                    //Set PCIE0 to enable PCMSK0 scan.  
+  PCMSK0 |= (1 << PCINT0);                                                //Set PCINT0 (digital input 8) to trigger an interrupt on state change.THROTLE
+  PCMSK0 |= (1 << PCINT1);                                                //9  pin
+  PCMSK0 |= (1 << PCINT4);                                                //12 pin
+  PCMSK0 |= (1 << PCINT2);                                                // (digital input 10) as roll angle .
+  PCMSK0 |= (1 << PCINT3);                                                // (digital input 11) as pitch angle 
+  PCMSK0 |= (1 << PCINT5);                                                //13 for yaw
+   for (int cal_int = 0; cal_int < 1250 ; cal_int ++){                           //Wait 5 seconds before continuing.
+    PORTD |= B11110000;                                                     //Set digital poort 4, 5, 6 and 7 high.
+    delayMicroseconds(1000);                                                //Wait 1000us.
+    PORTD &= B00001111;                                                     //Set digital poort 4, 5, 6 and 7 low.
+    delayMicroseconds(3000);   }                                             //Wait 3000us.
+
+
+
+    PORTD |= B11110000;                                                     //Set digital poort 4, 5, 6 and 7 high.
+    delayMicroseconds(1000);                                                //Wait 1000us.
+    PORTD &= B00001111;                                                     //Set digital poort 4, 5, 6 and 7 low.
+    delay(3);                                                               //Wait 3 milliseconds before the next loop.
+
+
+////////CONTROL PARTS ENDS0;
+   loop_timer_pid = micros();
 
   
 }
-
+unsigned long throttle2,loop_1_time;
 void loop()
 {
 
-Serial.println("Started");
+//Serial.println("Started");
 
-pid_p_gain_roll = 0.05*receiver_input_channel_5-50;
+roll_kp = 0.05*rec6 - 50;
 
-pid_p_gain_pitch = pid_p_gain_roll;
-
+pitch_kp = roll_kp;
 
 
 
@@ -148,68 +155,78 @@ pid_p_gain_pitch = pid_p_gain_roll;
 
 
 
+tem_pitch  = (roll_receiver - 1500) * 0.25 ;     ///converting to degree and tilt range -20 to +20 roll
+tem_roll   = (pitch_receiver- 1500) *   0.25 ;    ///converting  to degree and tilt range -20 to +20 pitch
+tem_yaw    = (yaw_receiver - 1500)  * 0.25 ;
+//tem_yaw    =  0 ;
+//Serial.print(tem_pitch);Serial.print(",");Serial.print(tem_roll);Serial.print(",");
+//Serial.print(yaw_receiver);Serial.println();
+////////#####
+
+_roll   = roll  ;
+_pitch  = pitch ;
+_yaw    = yaw   ;
 
 
-if((receiver_input_channel_6>1500)&&throttle>1010){
-throttle = receiver_input_channel_3; 
+//Serial.print(_yaw);Serial.print(",");//Serial.print(_pitch);
+//Serial.println();
+
+roll_error  =  roll_des  -  _roll;
+pitch_error =  pitch_des - _pitch;
+yaw_error   =  yaw_des   - _yaw  ;
 
 
+u2[0] =  roll_kp  *  (roll_error)   + roll_kd  * (roll_error-roll_last_error);                     //.error in roll calculated
+u2[1] =  pitch_kp *  (pitch_error)  + pitch_kd * (pitch_error-pitch_last_error);        //.error in pitch calculated
 
-                               
-    esc_1 = throttle + pid_output_pitch - pid_output_roll;  //Calculate the pulse for esc 1 (front-right - CCW)
-    esc_2 = throttle - pid_output_pitch - pid_output_roll; //Calculate the pulse for esc 2 (rear-right - CW)
-    esc_3 = throttle - pid_output_pitch + pid_output_roll;  //Calculate the pulse for esc 3 (rear-left - CCW)
-    esc_4 = throttle + pid_output_pitch + pid_output_roll;  //Calculate the pulse for esc 4 (front-left - CW)
+//yaw_pid = yaw_kp  * yaw_error    +  yaw_kd  * (yaw_error - yaw_last_error)  ;       ///error in yaw
+yaw_pid =0 ;
+
+roll_last_error=roll_error;
+pitch_last_error=pitch_error;
 
 
-  esc_1 = constrain(esc_1,1000,2000);           
-  esc_2 = constrain(esc_2,1000,2000);           
-  esc_3 = constrain(esc_3,1000,2000);           
-  esc_4 = constrain(esc_4,1000,2000);  
-}
-else
+if((rec_arm>1500)&&throttle>1010)
 {
-  esc_1 = 1000;
+  
+  
+  esc_1 = throttle - u2[1]  + u2[0] + tem_roll  + tem_pitch + yaw_pid + tem_yaw; //Calculate the pulse for esc 1 (front-right - CCW)
+  esc_2 = throttle + u2[1]  + u2[0] - tem_roll  + tem_pitch - yaw_pid - tem_yaw; //Calculate the pulse for esc 2 (rear-right - CW)
+  esc_3 = throttle + u2[1]  - u2[0] - tem_roll  - tem_pitch + yaw_pid + tem_yaw; //Calculate the pulse for esc 3 (rear-left - CCW)
+  esc_4 = throttle - u2[1]  - u2[0] + tem_roll  - tem_pitch - yaw_pid - tem_yaw; //Calculate the pulse for esc 4 (front-left - CW)
+
+
+      esc_1 = constrain(esc_1,1000,2000);           
+      esc_2 = constrain(esc_2,1000,2000);           
+      esc_3 = constrain(esc_3,1000,2000);           
+      esc_4 = constrain(esc_4,1000,2000);           
+
+}
+
+else{
+esc_1 = 1000;
 esc_2 = 1000;
 esc_3 = 1000;
 esc_4 = 1000;
 }
+      
 
-/*Serial.print("ESC 1  ");
-Serial.println(esc_1);
-Serial.print("ESC 2 ");
-Serial.println(esc_2);
-Serial.print("ESC 3  ");
-Serial.println(esc_3);
-Serial.print("ESC 4  ");
-Serial.println(esc_4);
 
-*/
-
- 
+      while(micros() - loop_timer_pid < 4000);                                      //We wait until 4000us are passed.
+  //Serial.println(micros() - loop_timer_pid);
+       loop_timer_pid = micros();                                   //Set the timer for the next loop.
 
 
 
-Serial.print(pitch);
-Serial.print(" ");
-Serial.println(roll);
-          
- 
-           
-
-  while(micros() - loop_timer < 5000);                                      //We wait until 4000us are passed.
-       loop_timer = micros(); 
-
-  timer_channel_1 = esc_1 + loop_timer;                                     //Calculate the time of the faling edge of the esc-1 pulse.
-  timer_channel_2 = esc_2 + loop_timer;                                     //Calculate the time of the faling edge of the esc-2 pulse.
-  timer_channel_3 = esc_3 + loop_timer;                                     //Calculate the time of the faling edge of the esc-3 pulse.
-  
-  timer_channel_4 = esc_4 + loop_timer;   //Calculate the time of the falling edge of the esc-4 pulse.
 
 
+  PORTD |= B11110000;                                                       //Set digital outputs 4,5,6 and 7 high.
+  timer_channel_1 = esc_1 + loop_timer_pid;                                     //Calculate the time of the falling edge of the esc-1 pulse.
+  timer_channel_2 = esc_2 + loop_timer_pid;                                     //Calculate the time of the falling edge of the esc-2 pulse.
+  timer_channel_3 = esc_3 + loop_timer_pid;                                     //Calculate the time of the falling edge of the esc-3 pulse.
+  timer_channel_4 = esc_4 + loop_timer_pid;                                     //Calculate the time of the falling edge of the esc-4 pulse.
 
-PORTD |= B11110000;         
-  
+
   while(PORTD >= 16){                                                       //Stay in this loop until output 4,5,6 and 7 are low.
     esc_loop_timer = micros();                                              //Read the current time.
     if(timer_channel_1 <= esc_loop_timer)PORTD &= B11101111;                //Set digital output 4 to low if the time is expired.
@@ -222,11 +239,53 @@ PORTD |= B11110000;
 }
 
 
-
 ISR(PCINT0_vect){
   current_time = micros();
+  //Channel 1=========================================
+  if(PINB & B00000001){                                                     //Is input 8 high?
+    if(last_channel_1 == 0){                                                //Input 8 changed from 0 to 1.
+      last_channel_1 = 1;                                                   //Remember current input state.
+      timer_1 = current_time;                                               //Set timer_1 to current_time.
+    }
+  }
+  else if(last_channel_1 == 1){                                             //Input 8 is not high and changed from 1 to 0.
+    last_channel_1 = 0;                                                     //Remember current input state.
+    throttle1 = current_time - timer_1;                             //Channel 1 is current_time - timer_1.
+  }
 
-  //Channel 3=========================================
+//Channel 5=========================================
+  if(PINB & B00010000){                                                    
+    if(last_channel_5 == 0){                                              
+      last_channel_5 = 1;                                                   
+      timer_5 = current_time;                                             
+    }
+  }
+  else if(last_channel_5 == 1){                                             
+    last_channel_5 = 0;                                                    
+    rec_arm = current_time - timer_5;                            
+  }
+
+ //Channel 6=========================================
+  if(PINB & B00000010){                                                    
+    if(last_channel_6 == 0){                                              
+      last_channel_6 = 1;                                                   
+      timer_6 = current_time;                                             
+    }
+  }
+  else if(last_channel_6 == 1){                                             
+    last_channel_6 = 0;                                                    
+    rec6 = current_time - timer_6;                            
+  }
+
+
+
+if(throttle1-last_throttle<5||throttle1-last_throttle>-5)
+throttle=last_throttle;
+last_throttle=throttle1;
+
+
+
+ //Channel 3=========================================
   if(PINB & B00000100 ){                                                    //Is input 10 high?
     if(last_channel_3 == 0){                                                //Input 10 changed from 0 to 1.
       last_channel_3 = 1;                                                   //Remember current input state.
@@ -235,36 +294,34 @@ ISR(PCINT0_vect){
   }
   else if(last_channel_3 == 1){                                             //Input 10 is not high and changed from 1 to 0.
     last_channel_3 = 0;                                                     //Remember current input state.
-    receiver_input_channel_3 = current_time - timer_3;                             //Channel 3 is current_time - timer_3.
+    pitch_receiver = current_time - timer_3;                             //Channel 3 is current_time - timer_3.
 
   }
 
-  //CHANNEL 6
- if(PINB & B00010000 ){                                                    //Is input 10 high?
-    if(last_channel_6 == 0){                                                //Input 10 changed from 0 to 1.
-      last_channel_6 = 1;                                                   //Remember current input state.
-      timer_6 = current_time;                                               //Set timer_3 to current_time.
+
+  
+  //Channel 4=========================================
+  if(PINB & B00001000 ){                                                    //Is input 11 high?
+    if(last_channel_4 == 0){                                                //Input 11 changed from 0 to 1.
+      last_channel_4 = 1;                                                   //Remember current input state.
+      timer_4 = current_time;                                               //Set timer_4 to current_time.
     }
   }
-  else if(last_channel_6 == 1){                                             //Input 10 is not high and changed from 1 to 0.
-    last_channel_6 = 0;                                                     //Remember current input state.
-    receiver_input_channel_6 = current_time - timer_6;                             //Channel 3 is current_time - timer_3.
-
+  else if(last_channel_4 == 1){                                             //Input 11 is not high and changed from 1 to 0.
+    last_channel_4 = 0;                                                     //Remember current input state.
+    roll_receiver = current_time - timer_4;                             //Channel 4 is current_time - timer_4.
   }
-
-
-if(PINB & B00001000 ){                                                    //Is input 10 high?
-    if(last_channel_5 == 0){                                                //Input 10 changed from 0 to 1.
-      last_channel_5 = 1;                                                   //Remember current input state.
-      timer_5 = current_time;                                               //Set timer_3 to current_time.
+///channel 1 yaw
+  if(PINB & B00100000 ){                                                    //Is input 13 high?
+    if(last_channel_2 == 0){                                                //Input 13 changed from 0 to 1.
+      last_channel_2 = 1;                                                   //Remember current input state.
+      timer_2 = current_time;                                               //Set timer_4 to current_time.
     }
   }
-  else if(last_channel_5 == 1){                                             //Input 10 is not high and changed from 1 to 0.
-    last_channel_5 = 0;                                                     //Remember current input state.
-    receiver_input_channel_5 = current_time - timer_5;                             //Channel 3 is current_time - timer_3.
-
+  else if(last_channel_2 == 1){                                             //Input 11 is not high and changed from 1 to 0.
+    last_channel_2 = 0;                                                     //Remember current input state.
+    yaw_receiver = current_time - timer_2;                             //Channel 4 is current_time - timer_4.
   }
-
 
 }
 
@@ -280,7 +337,7 @@ if(PINB & B00001000 ){                                                    //Is i
 
 void setupmpu() {
    
-    pinMode(LED_PIN, OUTPUT);
+    //pinMode(LED_PIN, OUTPUT);
     
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
@@ -333,7 +390,7 @@ void setupmpu() {
     }
 
     // configure LED for output
-    digitalWrite(13,LOW);
+   
     
 
 }
